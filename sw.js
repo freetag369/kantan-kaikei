@@ -1,5 +1,5 @@
 // Service Worker: プリキャッシュ + Cache First(オフライン対応)
-const CACHE_NAME = 'kk-v1';
+const CACHE_NAME = 'kk-v2';
 
 const ASSETS = [
   './',

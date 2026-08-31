@@ -216,8 +216,8 @@ function render() {
     { class: 'view-scroll input-body' },
     editBanner,
     el('div', { class: 'card form-card' }, dateRow, el('div', { class: 'form-sep' }), memoRow, el('div', { class: 'form-sep' }), amountRow),
-    el('div', { class: 'form-section' }, el('div', { class: 'section-label' }, 'カテゴリー'), grid),
     methodSection,
+    el('div', { class: 'form-section' }, el('div', { class: 'section-label' }, 'カテゴリー'), grid),
     el('div', { class: 'footer-spacer' })
   );
 
