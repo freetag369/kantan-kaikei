@@ -1,8 +1,9 @@
 // localStorage 永続化・スキーマ・シード・マイグレーション・セレクタ
 import { uid, monthOf, addMonths } from './utils.js';
+import { ACCENTS } from './icons.js';
 
 const PREFIX = 'kk:';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 export const APP_ID = 'kantan-kaikei';
 
 const KEYS = ['meta', 'profiles', 'paymentMethods', 'categories', 'transactions', 'budgets', 'settings'];
@@ -66,6 +67,19 @@ const BUSINESS_INCOME = [
   ['雑収入', 'coin', '#6b7280'],
 ];
 
+// 事業を追加するときに選べる初期カテゴリーのテンプレート
+const CATEGORY_TEMPLATES = {
+  business: { expense: BUSINESS_EXPENSE, income: BUSINESS_INCOME },
+  personal: { expense: PERSONAL_EXPENSE, income: PERSONAL_INCOME },
+  empty: { expense: [], income: [] },
+};
+
+// まだ使われていないアクセント色を優先して割り当てる
+function nextAccent(profiles) {
+  const used = new Set(profiles.map((p) => p.accent));
+  return ACCENTS.find((a) => !used.has(a)) || ACCENTS[profiles.length % ACCENTS.length];
+}
+
 function makeCategories(profileId, type, defs) {
   return defs.map(([name, icon, color], i) => ({
     id: uid() + i.toString(36),
@@ -83,8 +97,9 @@ function seed() {
   const now = new Date().toISOString();
   db.meta = { schemaVersion: SCHEMA_VERSION, activeProfileId: 'personal', createdAt: now, updatedAt: now };
   db.profiles = [
-    { id: 'personal', name: '個人' },
-    { id: 'business', name: 'ビジネス' },
+    { id: 'personal', name: '個人', accent: 'orange', kind: 'personal', sortOrder: 0 },
+    { id: 'business', name: 'フリータッグ', accent: 'teal', kind: 'business', sortOrder: 1 },
+    { id: 'business2', name: 'その他事業', accent: 'blue', kind: 'business', sortOrder: 2 },
   ];
   db.paymentMethods = [
     { id: uid(), name: '現金', sortOrder: 0, archived: false },
@@ -94,6 +109,8 @@ function seed() {
     ...makeCategories('personal', 'income', PERSONAL_INCOME),
     ...makeCategories('business', 'expense', BUSINESS_EXPENSE),
     ...makeCategories('business', 'income', BUSINESS_INCOME),
+    ...makeCategories('business2', 'expense', BUSINESS_EXPENSE),
+    ...makeCategories('business2', 'income', BUSINESS_INCOME),
   ];
   db.transactions = [];
   db.budgets = {};
@@ -103,8 +120,40 @@ function seed() {
 
 // ================= マイグレーション =================
 
+// v1 時代の2プロフィールに割り当てる既定アクセント
+const V1_DEFAULT_ACCENT = { personal: 'orange', business: 'teal' };
+
 const migrations = {
-  // 2: (data) => { ... 将来のスキーマ変更をここに追加 ... }
+  // v2: 複数事業対応。profileId は一切書き換えないので、既存の取引・カテゴリー・
+  //     予算はそのまま引き継がれる。表示名だけを変え、3件目の事業を追加する。
+  2: (data) => {
+    if (!Array.isArray(data.profiles)) data.profiles = [];
+    if (!Array.isArray(data.categories)) data.categories = [];
+
+    data.profiles.forEach((p, i) => {
+      if (!p.accent) p.accent = V1_DEFAULT_ACCENT[p.id] || ACCENTS[i % ACCENTS.length];
+      if (!p.kind) p.kind = p.id === 'personal' ? 'personal' : 'business';
+      if (typeof p.sortOrder !== 'number') p.sortOrder = i;
+    });
+
+    // 既定名のままの「ビジネス」だけ改名する(利用者が改名済みなら尊重)
+    const biz = data.profiles.find((p) => p.id === 'business');
+    if (biz && biz.name === 'ビジネス') biz.name = 'フリータッグ';
+
+    // 「その他事業」を追加(v1 のプロフィールはちょうど2件)
+    if (data.profiles.length === 2 && biz && !data.profiles.some((p) => p.id === 'business2')) {
+      data.profiles.push({ id: 'business2', name: 'その他事業', accent: 'blue', kind: 'business', sortOrder: 2 });
+      data.categories.push(
+        ...makeCategories('business2', 'expense', BUSINESS_EXPENSE),
+        ...makeCategories('business2', 'income', BUSINESS_INCOME)
+      );
+    }
+
+    // アクティブなプロフィールが存在しないケースの保険
+    if (data.meta && !data.profiles.some((p) => p.id === data.meta.activeProfileId)) {
+      data.meta.activeProfileId = data.profiles[0]?.id || 'personal';
+    }
+  },
 };
 
 function migrate(data) {
@@ -139,8 +188,9 @@ function touch() {
 
 // ================= プロフィール =================
 
+// sortOrder 昇順の配列を返す(要素は生オブジェクトなので更新はそのまま反映される)
 export function getProfiles() {
-  return db.profiles;
+  return db.profiles.slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
 export function getProfile(id) {
@@ -156,13 +206,81 @@ export function setActiveProfileId(id) {
   touch();
 }
 
-export function renameProfile(id, name) {
+export function updateProfile(id, patch) {
   const p = getProfile(id);
-  if (p) {
-    p.name = name;
-    writeKey('profiles');
-    touch();
+  if (!p) return;
+  Object.assign(p, patch);
+  writeKey('profiles');
+  touch();
+}
+
+// template: 'business' | 'personal' | 'empty'
+// copyFromProfileId を渡すと、そのプロフィールのカテゴリー定義だけを複製する(取引は複製しない)
+export function addProfile({ name, accent, kind = 'business', template = 'business', copyFromProfileId = null }) {
+  const p = {
+    id: uid(),
+    name,
+    accent: accent || nextAccent(db.profiles),
+    kind,
+    sortOrder: db.profiles.length ? Math.max(...db.profiles.map((x) => x.sortOrder ?? 0)) + 1 : 0,
+  };
+  db.profiles.push(p);
+
+  if (copyFromProfileId && getProfile(copyFromProfileId)) {
+    for (const type of ['expense', 'income']) {
+      getCategories(copyFromProfileId, type).forEach((c, i) => {
+        db.categories.push({ ...c, id: uid() + i.toString(36), profileId: p.id, archived: false });
+      });
+    }
+  } else {
+    const t = CATEGORY_TEMPLATES[template] || CATEGORY_TEMPLATES.business;
+    db.categories.push(
+      ...makeCategories(p.id, 'expense', t.expense),
+      ...makeCategories(p.id, 'income', t.income)
+    );
   }
+
+  writeKey('profiles');
+  writeKey('categories');
+  touch();
+  return p;
+}
+
+// 削除確認ダイアログに件数を出すため
+export function profileStats(id) {
+  return {
+    transactions: db.transactions.filter((t) => t.profileId === id).length,
+    categories: db.categories.filter((c) => c.profileId === id).length,
+    budgets: Object.keys(db.budgets).filter((k) => k.startsWith(id + '|')).length,
+  };
+}
+
+// プロフィール削除 = その事業の帳簿(取引・カテゴリー・予算)を丸ごと物理削除。
+// 支払い方法は全事業共通なので触らない。最後の1件は削除できない。
+export function removeProfile(id) {
+  if (db.profiles.length <= 1 || !getProfile(id)) return false;
+  db.profiles = db.profiles.filter((p) => p.id !== id);
+  db.transactions = db.transactions.filter((t) => t.profileId !== id);
+  db.categories = db.categories.filter((c) => c.profileId !== id);
+  for (const k of Object.keys(db.budgets)) {
+    if (k.startsWith(id + '|')) delete db.budgets[k];
+  }
+  getProfiles().forEach((p, i) => (p.sortOrder = i)); // 並び順を詰める
+  if (db.meta.activeProfileId === id) db.meta.activeProfileId = getProfiles()[0].id;
+  ['profiles', 'transactions', 'categories', 'budgets'].forEach(writeKey);
+  touch();
+  return true;
+}
+
+export function moveProfile(id, dir) {
+  const list = getProfiles();
+  const idx = list.findIndex((p) => p.id === id);
+  const p = list[idx];
+  const swapWith = list[idx + dir];
+  if (!p || !swapWith) return;
+  [p.sortOrder, swapWith.sortOrder] = [swapWith.sortOrder, p.sortOrder];
+  writeKey('profiles');
+  touch();
 }
 
 // ================= カテゴリー =================

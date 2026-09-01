@@ -79,3 +79,20 @@ export const PALETTE = [
   '#4db5e8', '#3b82f6', '#3b5bd6', '#8b5cf6', '#e85daa', '#e05252',
   '#8a6b4d', '#6b7280',
 ];
+
+// プロフィール(事業)用アクセント配色プリセット
+// css の html[data-accent='...'] と1:1で対応する。追加する場合はCSS側も
+// ライト/ダーク両方に定義すること(ダークを書き忘れると詳細度でライトが勝つ)
+export const ACCENTS = ['orange', 'teal', 'blue', 'green', 'purple', 'pink', 'brown', 'red'];
+
+// 設定画面のスウォッチ表示用(ライトテーマの基準色)
+export const ACCENT_HEX = {
+  orange: '#ee821c',
+  teal: '#0ea89b',
+  blue: '#3b82f6',
+  green: '#3fae5a',
+  purple: '#8b5cf6',
+  pink: '#e85daa',
+  brown: '#8a6b4d',
+  red: '#e05252',
+};

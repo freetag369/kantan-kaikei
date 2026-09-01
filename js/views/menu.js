@@ -1,9 +1,9 @@
 // メニュータブ(サブページ含む)
 import { el, yen, signedYen, formatJPMonth, escapeHtml } from '../utils.js';
-import { svgIcon, PICKABLE_ICONS, PALETTE } from '../icons.js';
+import { svgIcon, PICKABLE_ICONS, PALETTE, ACCENTS, ACCENT_HEX } from '../icons.js';
 import { state, on, emit } from '../state.js';
 import * as store from '../store.js';
-import { profilePill, catIcon, txRow, emptyState, segmented } from '../components.js';
+import { profilePill, catIcon, txRow, emptyState, segmented, applyAccent } from '../components.js';
 import { donutChart, barChart, balanceChart, ratioBar } from '../charts.js';
 import { openSheet, toast, confirmDialog, promptDialog } from '../ui.js';
 import { openTransactionInInput } from './input.js';
@@ -14,6 +14,7 @@ const menuState = {
   catType: 'expense',
   catEditMode: false,
   pmEditMode: false,
+  profileEditMode: false,
   reportYear: new Date().getFullYear(),
   search: { keyword: '', type: '', from: '', to: '', categoryId: '', paymentMethodId: '' },
 };
@@ -23,6 +24,8 @@ export function initMenuView(container) {
   on('menu', render);
   on('profile', () => {
     menuState.stack = [];
+    // カテゴリーは事業ごとに別物なので、検索条件を持ち越さない
+    menuState.search.categoryId = '';
     render();
   });
   render();
@@ -45,6 +48,7 @@ function render() {
   const renderers = {
     categories: renderCategories,
     payments: renderPayments,
+    profiles: renderProfiles,
     search: renderSearch,
     annualBalance: () => renderPeriodBalance('year'),
     allBalance: () => renderPeriodBalance('all'),
@@ -113,8 +117,10 @@ function renderMain() {
       'div',
       { class: 'card list-card' },
       menuItem('edit', 'カテゴリーの編集', () => push('categories'), { sub: `${profile.name}のカテゴリー` }),
-      menuItem('card', '支払い方法の管理', () => push('payments'), { sub: '個人・ビジネス共通' }),
-      menuItem('person', 'プロフィール名の変更', renameProfiles)
+      menuItem('card', '支払い方法の管理', () => push('payments'), { sub: 'すべての事業で共通' }),
+      menuItem('briefcase', '事業(プロフィール)の管理', () => push('profiles'), {
+        sub: store.getProfiles().map((p) => p.name).join('・'),
+      })
     ),
     el('div', { class: 'section-label' }, 'レポート'),
     el(
@@ -133,20 +139,220 @@ function renderMain() {
       { class: 'card list-card' },
       menuItem('download', 'バックアップ', () => push('backup'), { sub: 'エクスポート / インポート' })
     ),
-    el('div', { class: 'menu-version' }, 'かんたん会計(マルチ対応) v1.0'),
+    el('div', { class: 'menu-version' }, 'かんたん会計(マルチ対応) v1.1'),
     el('div', { class: 'footer-spacer' })
   );
 
   root.append(header, body);
 }
 
-async function renameProfiles() {
-  for (const p of store.getProfiles()) {
-    const name = await promptDialog('', { title: `「${p.name}」の新しい名前`, value: p.name });
-    if (name) store.renameProfile(p.id, name);
-  }
+// ================= 事業(プロフィール)の管理 =================
+
+// 'profile' を emit すると initMenuView のハンドラでページスタックが消え、
+// メインメニューに戻ってしまう。この画面ではデータ系トピックだけ流して自前で再描画する。
+function afterProfileChange() {
   emit('menu', 'input', 'calendar', 'report', 'budget');
-  toast('プロフィール名を保存しました');
+  render();
+}
+
+function renderProfiles() {
+  const profiles = store.getProfiles();
+  const editMode = menuState.profileEditMode;
+
+  const header = subHeader('事業(プロフィール)', {
+    right: el(
+      'button',
+      { class: 'text-btn', onclick: () => { menuState.profileEditMode = !editMode; render(); } },
+      editMode ? '完了' : '編集'
+    ),
+  });
+
+  const addRow = el(
+    'button',
+    { class: 'card add-row', onclick: () => openProfileEditor(null) },
+    el('span', { class: 'add-row-icon', html: svgIcon('plus') }),
+    el('span', {}, '事業の追加'),
+    el('span', { class: 'row-chevron', html: svgIcon('chevronR') })
+  );
+
+  const list = el(
+    'div',
+    { class: 'card list-card' },
+    profiles.map((p, i) =>
+      el(
+        'div',
+        { class: 'cat-edit-row' },
+        editMode
+          ? el('div', { class: 'reorder-btns' },
+              el('button', { class: 'reorder-btn', 'aria-label': '上へ', disabled: i === 0, html: svgIcon('chevronL'), style: 'transform:rotate(90deg)', onclick: () => { store.moveProfile(p.id, -1); afterProfileChange(); } }),
+              el('button', { class: 'reorder-btn', 'aria-label': '下へ', disabled: i === profiles.length - 1, html: svgIcon('chevronR'), style: 'transform:rotate(90deg)', onclick: () => { store.moveProfile(p.id, 1); afterProfileChange(); } })
+            )
+          : null,
+        el('span', {
+          class: 'cat-icon',
+          style: `color:${ACCENT_HEX[p.accent] || ACCENT_HEX.orange}`,
+          html: svgIcon(p.kind === 'personal' ? 'person' : 'briefcase'),
+        }),
+        el('button', { class: 'cat-edit-name', onclick: () => openProfileEditor(p) }, p.name),
+        p.id === state.activeProfileId ? el('span', { class: 'profile-active-badge' }, '表示中') : null,
+        editMode
+          ? el('button', {
+              class: 'icon-btn danger',
+              'aria-label': '削除',
+              disabled: profiles.length <= 1,
+              html: svgIcon('trash'),
+              onclick: () => deleteProfile(p),
+            })
+          : el('span', { class: 'row-chevron', html: svgIcon('chevronR') })
+      )
+    )
+  );
+
+  const note = el(
+    'div',
+    { class: 'menu-item-sub', style: 'padding: 6px 6px 0; line-height: 1.6' },
+    '事業ごとに取引・カテゴリー・予算が分かれます。支払い方法はすべての事業で共通です。'
+  );
+
+  const body = el('div', { class: 'view-scroll' }, addRow, list, note, el('div', { class: 'footer-spacer' }));
+  root.append(header, body);
+}
+
+function openProfileEditor(profile) {
+  const isNew = !profile;
+  const others = store.getProfiles();
+  const draft = {
+    name: profile?.name || '',
+    accent: profile?.accent || ACCENTS.find((a) => !others.some((p) => p.accent === a)) || 'blue',
+    kind: profile?.kind || 'business',
+    template: 'business',
+  };
+
+  const nameInput = el('input', { type: 'text', class: 'sheet-text-input', placeholder: '事業名', value: draft.name, maxlength: '12' });
+  nameInput.addEventListener('input', () => (draft.name = nameInput.value));
+
+  const preview = el('span', {
+    class: 'cat-icon lg',
+    style: `color:${ACCENT_HEX[draft.accent]}`,
+    html: svgIcon(draft.kind === 'personal' ? 'person' : 'briefcase'),
+  });
+
+  const accentGrid = el(
+    'div',
+    { class: 'accent-grid' },
+    ACCENTS.map((a) =>
+      el('button', {
+        class: `color-cell${a === draft.accent ? ' selected' : ''}`,
+        style: `background:${ACCENT_HEX[a]}`,
+        'aria-label': a,
+        onclick: (e) => {
+          draft.accent = a;
+          accentGrid.querySelectorAll('.color-cell').forEach((x) => x.classList.remove('selected'));
+          e.currentTarget.classList.add('selected');
+          preview.style.color = ACCENT_HEX[a];
+        },
+      })
+    )
+  );
+
+  // 新規追加時のみ: 初期カテゴリーの決め方を選ぶ
+  const copySel = el(
+    'select',
+    { class: 'search-select' },
+    others.map((p) => el('option', { value: p.id }, `${p.name} のカテゴリーをコピー`))
+  );
+  const copyRow = el('div', { style: 'margin-top: 8px; display: none' }, copySel);
+
+  const tplSel = el(
+    'select',
+    { class: 'search-select' },
+    [
+      ['business', '事業用テンプレート(仕入・外注費など)'],
+      ['personal', '個人用テンプレート(食費・日用品など)'],
+      ['copy', '他の事業からコピー'],
+      ['empty', '空(あとで自分で追加)'],
+    ].map(([v, label]) => el('option', { value: v }, label))
+  );
+  tplSel.addEventListener('change', () => {
+    draft.template = tplSel.value;
+    copyRow.style.display = tplSel.value === 'copy' ? '' : 'none';
+  });
+
+  const sheetCtl = openSheet({
+    title: isNew ? '事業の追加' : '事業の編集',
+    content: el(
+      'div',
+      { class: 'cat-editor' },
+      el('div', { class: 'cat-editor-head' }, preview, nameInput),
+      el('div', { class: 'section-label' }, 'カラー'),
+      accentGrid,
+      isNew ? el('div', { class: 'section-label' }, '初期カテゴリー') : null,
+      isNew ? tplSel : null,
+      isNew ? copyRow : null,
+      el(
+        'button',
+        {
+          class: 'save-btn',
+          onclick: () => {
+            const name = draft.name.trim();
+            if (!name) {
+              toast('事業名を入力してください', { icon: 'info' });
+              return;
+            }
+            if (isNew) {
+              store.addProfile({
+                name,
+                accent: draft.accent,
+                kind: draft.kind,
+                template: draft.template === 'copy' ? 'business' : draft.template,
+                copyFromProfileId: draft.template === 'copy' ? copySel.value || null : null,
+              });
+            } else {
+              store.updateProfile(profile.id, { name, accent: draft.accent });
+              if (profile.id === state.activeProfileId) applyAccent(profile.id);
+            }
+            sheetCtl.close();
+            afterProfileChange();
+            toast(isNew ? '事業を追加しました' : '保存しました');
+          },
+        },
+        el('span', {}, '保存する')
+      )
+    ),
+  });
+}
+
+async function deleteProfile(p) {
+  if (store.getProfiles().length <= 1) {
+    toast('最後の事業は削除できません', { icon: 'info' });
+    return;
+  }
+  const stats = store.profileStats(p.id);
+  const ok = await confirmDialog(
+    `「${p.name}」を削除します。取引 ${stats.transactions}件・カテゴリー ${stats.categories}件・予算 ${stats.budgets}件がすべて消え、元に戻せません。先にバックアップをおすすめします。`,
+    { okLabel: '削除', danger: true }
+  );
+  if (!ok) return;
+  if (stats.transactions > 0) {
+    const ok2 = await confirmDialog(`本当に「${p.name}」の取引 ${stats.transactions}件を完全に削除しますか?`, {
+      title: '最終確認',
+      okLabel: '完全に削除',
+      danger: true,
+    });
+    if (!ok2) return;
+  }
+  const wasActive = p.id === state.activeProfileId;
+  if (!store.removeProfile(p.id)) return;
+  if (wasActive) {
+    // 表示中の事業が消えたので、残った先頭の事業に切り替える
+    state.activeProfileId = store.getActiveProfileId();
+    state.inputForm.categoryId = null;
+    state.inputForm.editingTxId = null;
+    menuState.search.categoryId = '';
+    applyAccent(state.activeProfileId);
+  }
+  afterProfileChange();
+  toast('事業を削除しました', { icon: 'trash' });
 }
 
 // ================= カテゴリー編集 =================
@@ -744,7 +950,7 @@ function renderBackup() {
       if (!ok) return;
       store.importData(text);
       state.activeProfileId = store.getActiveProfileId();
-      document.documentElement.dataset.profile = state.activeProfileId;
+      applyAccent(state.activeProfileId);
       state.inputForm.categoryId = null;
       menuState.stack = [];
       emit('menu', 'input', 'calendar', 'report', 'budget', 'profile');

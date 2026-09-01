@@ -4,7 +4,7 @@ import { svgIcon } from '../icons.js';
 import { state, on, emit, resetInputForm, setState } from '../state.js';
 import * as store from '../store.js';
 import { toast, confirmDialog } from '../ui.js';
-import { profilePill, catIcon, segmented } from '../components.js';
+import { profilePill, catIcon, segmented, emptyState } from '../components.js';
 
 let root;
 
@@ -145,7 +145,9 @@ function render() {
 
   // ===== カテゴリーグリッド =====
   if (!form.categoryId && categories.length) form.categoryId = categories[0].id;
-  const grid = el('div', { class: 'cat-grid' });
+  const grid = categories.length
+    ? el('div', { class: 'cat-grid' })
+    : emptyState('カテゴリーがありません。メニュー →「カテゴリーの編集」から追加してください。', 'info');
   for (const cat of categories) {
     const btn = el(
       'button',
