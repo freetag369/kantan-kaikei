@@ -5,10 +5,15 @@ import { state, setState, emit } from './state.js';
 import * as store from './store.js';
 import { toast } from './ui.js';
 
-// 個人/ビジネス切替ピル
+// 事業(プロフィール)切替ピル。件数に応じてCSS側で文字が縮み、常に1行に並ぶ
 export function profilePill() {
   const profiles = store.getProfiles();
-  const wrap = el('div', { class: 'profile-pill', role: 'tablist', 'aria-label': 'プロフィール切替' });
+  // 3件以上はヘッダーの1行目を独立して使い、事業名が省略されないようにする
+  const wrap = el('div', {
+    class: `profile-pill${profiles.length >= 3 ? ' wide' : ''}`,
+    role: 'tablist',
+    'aria-label': '事業切替',
+  });
   const indicator = el('div', { class: 'profile-pill-indicator' });
   wrap.append(indicator);
   profiles.forEach((p, i) => {
@@ -18,6 +23,7 @@ export function profilePill() {
         class: `profile-pill-btn${p.id === state.activeProfileId ? ' active' : ''}`,
         role: 'tab',
         'aria-selected': p.id === state.activeProfileId ? 'true' : 'false',
+        title: p.name,
         onclick: () => switchProfile(p.id),
       },
       p.name
@@ -26,8 +32,15 @@ export function profilePill() {
   });
   const activeIdx = profiles.findIndex((p) => p.id === state.activeProfileId);
   indicator.style.setProperty('--idx', String(Math.max(0, activeIdx)));
+  // --count はインジケーターの幅とボタンの文字サイズの両方で使う
   indicator.style.setProperty('--count', String(profiles.length));
+  wrap.style.setProperty('--count', String(profiles.length));
   return wrap;
+}
+
+// そのプロフィールのアクセント配色を <html data-accent> に反映する
+export function applyAccent(profileId) {
+  document.documentElement.dataset.accent = store.getProfile(profileId)?.accent || 'orange';
 }
 
 export function switchProfile(id) {
@@ -37,7 +50,7 @@ export function switchProfile(id) {
   // 入力フォームのカテゴリー選択はプロフィール固有のためリセット
   state.inputForm.categoryId = null;
   state.inputForm.editingTxId = null;
-  document.documentElement.dataset.profile = id;
+  applyAccent(id);
   emit('profile', 'input', 'calendar', 'report', 'budget', 'menu');
   toast(`${store.getProfile(id).name}に切り替えました`, { icon: 'swap' });
 }

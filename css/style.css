@@ -31,14 +31,71 @@
   --accent-shadow: rgba(238, 130, 28, 0.35);
 }
 
-html[data-profile='business'] {
-  /* アクセント(ビジネス=ティール) */
+/* アクセントプリセット(プロフィールごとに html[data-accent] で切替)
+   :root が orange なので、未設定・不明な値はオレンジにフォールバックする。
+   注意: html[data-accent] は :root より詳細度が高いので、ここに足したプリセットは
+   必ず下のダークモードブロックにも同じキーを定義すること(でないとダークで浮く) */
+html[data-accent='teal'] {
   --accent: #0ea89b;
   --accent-2: #2cc4ae;
   --accent-deep: #0b8f84;
   --accent-soft: #def4f0;
   --accent-soft-2: #e9f5f2;
   --accent-shadow: rgba(14, 168, 155, 0.35);
+}
+
+html[data-accent='blue'] {
+  --accent: #3b82f6;
+  --accent-2: #60a5fa;
+  --accent-deep: #2563eb;
+  --accent-soft: #e4edfe;
+  --accent-soft-2: #eaf0fb;
+  --accent-shadow: rgba(59, 130, 246, 0.35);
+}
+
+html[data-accent='green'] {
+  --accent: #3fae5a;
+  --accent-2: #62c47a;
+  --accent-deep: #2f9147;
+  --accent-soft: #e2f4e7;
+  --accent-soft-2: #eaf5ed;
+  --accent-shadow: rgba(63, 174, 90, 0.35);
+}
+
+html[data-accent='purple'] {
+  --accent: #8b5cf6;
+  --accent-2: #a883f9;
+  --accent-deep: #7440e8;
+  --accent-soft: #eee7fe;
+  --accent-soft-2: #f0ecfa;
+  --accent-shadow: rgba(139, 92, 246, 0.35);
+}
+
+html[data-accent='pink'] {
+  --accent: #e85daa;
+  --accent-2: #f083c0;
+  --accent-deep: #d33f92;
+  --accent-soft: #fce4f1;
+  --accent-soft-2: #faeaf3;
+  --accent-shadow: rgba(232, 93, 170, 0.35);
+}
+
+html[data-accent='brown'] {
+  --accent: #8a6b4d;
+  --accent-2: #a5855f;
+  --accent-deep: #6f5539;
+  --accent-soft: #f0e9e0;
+  --accent-soft-2: #f3efe9;
+  --accent-shadow: rgba(138, 107, 77, 0.35);
+}
+
+html[data-accent='red'] {
+  --accent: #e05252;
+  --accent-2: #ec7a72;
+  --accent-deep: #c73c3c;
+  --accent-soft: #fce6e4;
+  --accent-soft-2: #faeceb;
+  --accent-shadow: rgba(224, 82, 82, 0.35);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -67,13 +124,67 @@ html[data-profile='business'] {
     --accent-shadow: rgba(245, 148, 46, 0.28);
   }
 
-  html[data-profile='business'] {
+  html[data-accent='teal'] {
     --accent: #22bfae;
     --accent-2: #45d4bf;
     --accent-deep: #12a294;
     --accent-soft: #15332f;
     --accent-soft-2: #1e2c2a;
     --accent-shadow: rgba(34, 191, 174, 0.28);
+  }
+
+  html[data-accent='blue'] {
+    --accent: #5b9bff;
+    --accent-2: #7cb0ff;
+    --accent-deep: #3b82f6;
+    --accent-soft: #182338;
+    --accent-soft-2: #1c2430;
+    --accent-shadow: rgba(91, 155, 255, 0.28);
+  }
+
+  html[data-accent='green'] {
+    --accent: #52c46e;
+    --accent-2: #74d78d;
+    --accent-deep: #3fae5a;
+    --accent-soft: #16301d;
+    --accent-soft-2: #1d2b21;
+    --accent-shadow: rgba(82, 196, 110, 0.28);
+  }
+
+  html[data-accent='purple'] {
+    --accent: #a17cf8;
+    --accent-2: #b89bfa;
+    --accent-deep: #8b5cf6;
+    --accent-soft: #251d3b;
+    --accent-soft-2: #26222f;
+    --accent-shadow: rgba(161, 124, 248, 0.28);
+  }
+
+  html[data-accent='pink'] {
+    --accent: #f077b8;
+    --accent-2: #f596c8;
+    --accent-deep: #e85daa;
+    --accent-soft: #3a1c2d;
+    --accent-soft-2: #2e2028;
+    --accent-shadow: rgba(240, 119, 184, 0.28);
+  }
+
+  html[data-accent='brown'] {
+    --accent: #ad8a64;
+    --accent-2: #c2a17c;
+    --accent-deep: #8a6b4d;
+    --accent-soft: #2f271e;
+    --accent-soft-2: #2a2521;
+    --accent-shadow: rgba(173, 138, 100, 0.28);
+  }
+
+  html[data-accent='red'] {
+    --accent: #f0736c;
+    --accent-2: #f5928c;
+    --accent-deep: #e05252;
+    --accent-soft: #3a2020;
+    --accent-soft-2: #2e2222;
+    --accent-shadow: rgba(240, 115, 108, 0.28);
   }
 }
 
@@ -197,6 +308,7 @@ svg.icon {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
   background: var(--bg-header);
@@ -217,8 +329,9 @@ svg.icon {
 }
 
 .header-spacer {
-  width: 92px;
-  flex-shrink: 0;
+  /* 事業が増えてピルが伸びたとき、タイトルより先にここが潰れるようにする */
+  flex: 0 200 92px;
+  min-width: 0;
 }
 
 .back-btn {
@@ -256,8 +369,26 @@ svg.icon {
   background: var(--card-2);
   border-radius: 999px;
   padding: 3px;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 64%;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* 事業が3つ以上のときはピルをヘッダーの1行目に独立させて、名前を省略せずに並べる */
+.profile-pill.wide {
+  order: -1;
+  flex-basis: 100%;
+  max-width: 100%;
+}
+
+/* ピルが1行目を占有するので、2行目の中央寄せ用スペーサーは不要 */
+.view-header:has(.profile-pill.wide) .header-spacer {
+  display: none;
+}
+
+.view-header:has(.profile-pill.wide) .segmented {
+  margin-inline: auto;
 }
 
 .profile-pill-indicator {
@@ -276,14 +407,17 @@ svg.icon {
 .profile-pill-btn {
   position: relative;
   z-index: 1;
-  padding: 5px 10px;
-  font-size: 12px;
+  /* 事業の数(--count)が増えるほど文字と余白を詰めて、常に1行に並べる */
+  padding: 5px clamp(3px, calc(18px - var(--count, 2) * 3px), 10px);
+  font-size: clamp(9.5px, calc(15px - var(--count, 2) * 0.9px), 12px);
   font-weight: 700;
   color: var(--text-2);
   border-radius: 999px;
   transition: color 0.2s ease;
   white-space: nowrap;
-  min-width: 44px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .profile-pill-btn.active {
@@ -1570,6 +1704,30 @@ button.cat-report-row:active {
 .color-cell.selected {
   border-color: var(--text);
   transform: scale(1.1);
+}
+
+/* 事業のアクセント色ピッカー(8色なので4列×2段) */
+.accent-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.accent-grid .color-cell {
+  width: 100%;
+  max-width: 56px;
+  justify-self: center;
+}
+
+.profile-active-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 3px 8px;
 }
 
 /* 検索 */

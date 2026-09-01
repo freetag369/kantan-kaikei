@@ -7,10 +7,11 @@ import { initCalendarView } from './views/calendar.js';
 import { initReportView } from './views/report.js';
 import { initBudgetView } from './views/budget.js';
 import { initMenuView } from './views/menu.js';
+import { applyAccent } from './components.js';
 
 store.initStore();
 state.activeProfileId = store.getActiveProfileId();
-document.documentElement.dataset.profile = state.activeProfileId;
+applyAccent(state.activeProfileId);
 
 // ビュー初期化
 initInputView($('#view-input'));
