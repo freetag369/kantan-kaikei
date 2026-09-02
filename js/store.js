@@ -3,7 +3,7 @@ import { uid, monthOf, addMonths } from './utils.js';
 import { ACCENTS } from './icons.js';
 
 const PREFIX = 'kk:';
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 export const APP_ID = 'kantan-kaikei';
 
 const KEYS = ['meta', 'profiles', 'paymentMethods', 'categories', 'transactions', 'budgets', 'settings'];
@@ -154,6 +154,9 @@ const migrations = {
       data.meta.activeProfileId = data.profiles[0]?.id || 'personal';
     }
   },
+  // v3: 振替(type:'transfer', fromPaymentMethodId/toPaymentMethodId)を追加。
+  //     既存データの書き換えは不要。旧バージョンが振替入りバックアップを拒否できるよう番号だけ進める。
+  3: () => {},
 };
 
 function migrate(data) {
@@ -390,7 +393,9 @@ export function updatePaymentMethod(id, patch) {
 }
 
 export function paymentMethodInUse(id) {
-  return db.transactions.some((t) => t.paymentMethodId === id);
+  return db.transactions.some(
+    (t) => t.paymentMethodId === id || t.fromPaymentMethodId === id || t.toPaymentMethodId === id
+  );
 }
 
 export function removePaymentMethod(id) {
@@ -415,9 +420,33 @@ export function movePaymentMethod(id, dir) {
   touch();
 }
 
+// 支払い方法ごとの残高 → Map<methodId, {balance, charged}>
+// 支払い方法はプロフィール共通なので全プロフィールの取引を横断して計算する。
+// charged: 振替の受け取り先になったことがある(=残高を表示する価値がある)方法
+export function getPaymentMethodBalances() {
+  const map = new Map();
+  const entry = (id) => {
+    if (!map.has(id)) map.set(id, { balance: 0, charged: false });
+    return map.get(id);
+  };
+  for (const t of db.transactions) {
+    if (t.type === 'transfer') {
+      if (t.fromPaymentMethodId) entry(t.fromPaymentMethodId).balance -= t.amount;
+      if (t.toPaymentMethodId) {
+        const e = entry(t.toPaymentMethodId);
+        e.balance += t.amount;
+        e.charged = true;
+      }
+    } else if (t.paymentMethodId) {
+      entry(t.paymentMethodId).balance += t.type === 'income' ? t.amount : -t.amount;
+    }
+  }
+  return map;
+}
+
 // ================= 取引 =================
 
-export function addTransaction({ profileId, type, date, amount, categoryId, paymentMethodId, memo }) {
+export function addTransaction({ profileId, type, date, amount, categoryId, paymentMethodId, fromPaymentMethodId, toPaymentMethodId, memo }) {
   const now = new Date().toISOString();
   const tx = {
     id: uid(),
@@ -425,8 +454,10 @@ export function addTransaction({ profileId, type, date, amount, categoryId, paym
     type,
     date,
     amount,
-    categoryId,
+    categoryId: categoryId || null,
     paymentMethodId: paymentMethodId || null,
+    fromPaymentMethodId: fromPaymentMethodId || null,
+    toPaymentMethodId: toPaymentMethodId || null,
     memo: memo || '',
     createdAt: now,
     updatedAt: now,
@@ -465,7 +496,11 @@ export function getTransactions(profileId, { type, from, to, month, year, catego
   if (from) list = list.filter((t) => t.date >= from);
   if (to) list = list.filter((t) => t.date <= to);
   if (categoryId) list = list.filter((t) => t.categoryId === categoryId);
-  if (paymentMethodId) list = list.filter((t) => t.paymentMethodId === paymentMethodId);
+  if (paymentMethodId) {
+    list = list.filter(
+      (t) => t.paymentMethodId === paymentMethodId || t.fromPaymentMethodId === paymentMethodId || t.toPaymentMethodId === paymentMethodId
+    );
+  }
   if (keyword) {
     const kw = keyword.toLowerCase();
     list = list.filter((t) => {
@@ -479,13 +514,13 @@ export function getTransactions(profileId, { type, from, to, month, year, catego
   return list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.createdAt.localeCompare(a.createdAt)));
 }
 
-// 集計: {income, expense} 合計
+// 集計: {income, expense} 合計(振替は収支に含めない)
 export function sumTransactions(txs) {
   let income = 0;
   let expense = 0;
   for (const t of txs) {
     if (t.type === 'income') income += t.amount;
-    else expense += t.amount;
+    else if (t.type === 'expense') expense += t.amount;
   }
   return { income, expense, balance: income - expense };
 }

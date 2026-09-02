@@ -1071,6 +1071,10 @@ svg.icon {
   color: var(--expense);
 }
 
+.tx-row-amount.transfer {
+  color: var(--text-2);
+}
+
 /* ============ レポート ============ */
 
 .summary-grid {
@@ -1584,6 +1588,18 @@ button.cat-report-row:active {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.pm-balance {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.pm-balance.negative {
+  color: var(--expense);
 }
 
 .reorder-btns {

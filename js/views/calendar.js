@@ -42,6 +42,7 @@ function render() {
   const txs = store.getTransactions(profileId, { from: gridStart, to: gridEnd });
   const byDay = new Map();
   for (const t of txs) {
+    if (t.type === 'transfer') continue;
     const e = byDay.get(t.date) || { income: 0, expense: 0 };
     e[t.type] += t.amount;
     byDay.set(t.date, e);
