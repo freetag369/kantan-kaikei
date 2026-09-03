@@ -95,23 +95,32 @@ export function catIcon(category, { size = '' } = {}) {
 
 // 取引リスト行
 export function txRow(tx, { onTap, showDate = false } = {}) {
-  const cat = store.getCategoryById(tx.categoryId);
+  const isTransfer = tx.type === 'transfer';
+  const cat = isTransfer ? null : store.getCategoryById(tx.categoryId);
   const method = tx.paymentMethodId ? store.getPaymentMethodById(tx.paymentMethodId) : null;
   const sub = [];
   if (showDate) sub.push(formatShortDate(tx.date));
-  if (method) sub.push(method.name);
+  if (isTransfer) {
+    const from = tx.fromPaymentMethodId ? store.getPaymentMethodById(tx.fromPaymentMethodId) : null;
+    const to = tx.toPaymentMethodId ? store.getPaymentMethodById(tx.toPaymentMethodId) : null;
+    sub.push(`${from ? from.name : '外部'} → ${to ? to.name : '(削除済み)'}`);
+  } else if (method) {
+    sub.push(method.name);
+  }
   if (tx.memo) sub.push(tx.memo);
+  const name = isTransfer ? '振替' : cat ? cat.name : '(削除済みカテゴリー)';
+  const amountText = isTransfer ? yen(tx.amount) : `${tx.type === 'income' ? '+' : '-'}${yen(tx.amount)}`;
   return el(
     'button',
     { class: 'tx-row', onclick: () => onTap?.(tx) },
-    catIcon(cat),
+    isTransfer ? catIcon({ icon: 'swap', color: '#6b7280' }) : catIcon(cat),
     el(
       'div',
       { class: 'tx-row-main' },
-      el('div', { class: 'tx-row-name' }, cat ? cat.name : '(削除済みカテゴリー)'),
+      el('div', { class: 'tx-row-name' }, name),
       sub.length ? el('div', { class: 'tx-row-sub' }, sub.join(' ・ ')) : null
     ),
-    el('div', { class: `tx-row-amount ${tx.type}` }, `${tx.type === 'income' ? '+' : '-'}${yen(tx.amount)}`)
+    el('div', { class: `tx-row-amount ${tx.type}` }, amountText)
   );
 }
 

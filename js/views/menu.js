@@ -139,7 +139,7 @@ function renderMain() {
       { class: 'card list-card' },
       menuItem('download', 'バックアップ', () => push('backup'), { sub: 'エクスポート / インポート' })
     ),
-    el('div', { class: 'menu-version' }, 'かんたん会計(マルチ対応) v1.1'),
+    el('div', { class: 'menu-version' }, 'かんたん会計(マルチ対応) v1.2'),
     el('div', { class: 'footer-spacer' })
   );
 
@@ -525,6 +525,7 @@ function openCategoryEditor(cat) {
 function renderPayments() {
   const methods = store.getPaymentMethods();
   const editMode = menuState.pmEditMode;
+  const balances = store.getPaymentMethodBalances();
 
   const header = subHeader('支払い方法', {
     right: el(
@@ -583,6 +584,14 @@ function renderPayments() {
               },
               m.name
             ),
+            // チャージ先になったことがある方法(Suica等のプリペイド)だけ残高を出す
+            balances.get(m.id)?.charged
+              ? el(
+                  'span',
+                  { class: `pm-balance${balances.get(m.id).balance < 0 ? ' negative' : ''}` },
+                  `残高 ${yen(balances.get(m.id).balance)}`
+                )
+              : null,
             editMode
               ? el('button', {
                   class: 'icon-btn danger',
@@ -629,6 +638,7 @@ function renderSearch() {
       ['', 'すべて'],
       ['expense', '支出'],
       ['income', '収入'],
+      ['transfer', '振替'],
     ],
     s.type,
     (v) => {
@@ -882,6 +892,7 @@ function renderBalanceTrend() {
 
     const byMonth = new Map();
     for (const t of txs) {
+      if (t.type === 'transfer') continue;
       const mm = t.date.slice(0, 7);
       const e = byMonth.get(mm) || { income: 0, expense: 0 };
       e[t.type] += t.amount;

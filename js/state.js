@@ -11,6 +11,8 @@ export const state = {
     amount: '',
     categoryId: null,
     paymentMethodId: null,
+    fromPaymentMethodId: null, // 振替のチャージ元(nullは「外部」)
+    toPaymentMethodId: null, // 振替のチャージ先
     editingTxId: null, // 編集中の取引ID(nullなら新規)
   },
   calendarMonth: thisMonth(),
@@ -55,6 +57,8 @@ export function resetInputForm(keepType = true) {
     amount: '',
     categoryId: null,
     paymentMethodId: state.inputForm.paymentMethodId,
+    fromPaymentMethodId: state.inputForm.fromPaymentMethodId,
+    toPaymentMethodId: state.inputForm.toPaymentMethodId,
     editingTxId: null,
   };
 }
