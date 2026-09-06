@@ -129,6 +129,35 @@ export function emptyState(message, icon = 'info') {
   return el('div', { class: 'empty-state' }, el('span', { html: svgIcon(icon) }), el('p', {}, message));
 }
 
+// トグルスイッチ付きの設定行(メニューのリストカード内で使う)
+export function switchRow(icon, label, checked, onChange, { sub = '' } = {}) {
+  const sw = el('button', {
+    class: `switch${checked ? ' on' : ''}`,
+    role: 'switch',
+    'aria-checked': checked ? 'true' : 'false',
+    'aria-label': label,
+  });
+  sw.append(el('span', { class: 'switch-knob' }));
+  sw.addEventListener('click', () => {
+    const next = !sw.classList.contains('on');
+    sw.classList.toggle('on', next);
+    sw.setAttribute('aria-checked', next ? 'true' : 'false');
+    onChange(next);
+  });
+  return el(
+    'div',
+    { class: 'menu-item switch-item' },
+    el('span', { class: 'menu-item-icon', html: svgIcon(icon) }),
+    el(
+      'div',
+      { class: 'menu-item-main' },
+      el('span', { class: 'menu-item-label' }, label),
+      sub ? el('span', { class: 'menu-item-sub' }, sub) : null
+    ),
+    sw
+  );
+}
+
 // セグメント切替(支出/収入 など)
 export function segmented(options, value, onChange, { cls = '' } = {}) {
   const wrap = el('div', { class: `segmented ${cls}`, role: 'tablist' });

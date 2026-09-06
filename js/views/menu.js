@@ -1,12 +1,13 @@
 // メニュータブ(サブページ含む)
 import { el, yen, signedYen, formatJPMonth, escapeHtml } from '../utils.js';
-import { svgIcon, PICKABLE_ICONS, PALETTE, ACCENTS, ACCENT_HEX } from '../icons.js';
-import { state, on, emit } from '../state.js';
+import { svgIcon, ACCENTS, ACCENT_HEX } from '../icons.js';
+import { state, on, emit, resetInputForm } from '../state.js';
 import * as store from '../store.js';
-import { profilePill, catIcon, txRow, emptyState, segmented, applyAccent } from '../components.js';
+import { profilePill, catIcon, txRow, emptyState, segmented, applyAccent, switchRow } from '../components.js';
 import { donutChart, barChart, balanceChart, ratioBar } from '../charts.js';
 import { openSheet, toast, confirmDialog, promptDialog } from '../ui.js';
 import { openTransactionInInput } from './input.js';
+import { openCategoryEditor as openSharedCategoryEditor } from './category-editor.js';
 
 let root;
 const menuState = {
@@ -122,6 +123,20 @@ function renderMain() {
         sub: store.getProfiles().map((p) => p.name).join('・'),
       })
     ),
+    el('div', { class: 'section-label' }, '入力画面'),
+    el(
+      'div',
+      { class: 'card list-card' },
+      switchRow('swap', '「振替」ボタンを表示', store.getSetting('showTransfer'), (on) => {
+        store.setSetting('showTransfer', on);
+        // 振替を隠したときに入力画面が振替のままだと操作できなくなるので支出に戻す
+        if (!on && state.inputForm.type === 'transfer' && !state.inputForm.editingTxId) {
+          resetInputForm(false);
+        }
+        emit('input');
+        toast(on ? '振替ボタンを表示します' : '振替ボタンを隠しました');
+      }, { sub: 'Suicaチャージなど、支払い方法間の資金移動を記録する' })
+    ),
     el('div', { class: 'section-label' }, 'レポート'),
     el(
       'div',
@@ -139,7 +154,7 @@ function renderMain() {
       { class: 'card list-card' },
       menuItem('download', 'バックアップ', () => push('backup'), { sub: 'エクスポート / インポート' })
     ),
-    el('div', { class: 'menu-version' }, 'かんたん会計(マルチ対応) v1.2'),
+    el('div', { class: 'menu-version' }, 'かんたん会計(マルチ対応) v1.3'),
     el('div', { class: 'footer-spacer' })
   );
 
@@ -437,87 +452,7 @@ async function deleteCategory(cat) {
 }
 
 function openCategoryEditor(cat) {
-  const isNew = !cat;
-  const draft = {
-    name: cat?.name || '',
-    icon: cat?.icon || 'cart',
-    color: cat?.color || PALETTE[0],
-  };
-
-  const nameInput = el('input', { type: 'text', class: 'sheet-text-input', placeholder: 'カテゴリー名', value: draft.name, maxlength: '20' });
-  nameInput.addEventListener('input', () => (draft.name = nameInput.value));
-
-  const preview = el('span', { class: 'cat-icon lg', style: `color:${draft.color}`, html: svgIcon(draft.icon) });
-
-  const iconGrid = el(
-    'div',
-    { class: 'icon-grid' },
-    PICKABLE_ICONS.map((name) =>
-      el('button', {
-        class: `icon-cell${name === draft.icon ? ' selected' : ''}`,
-        html: svgIcon(name),
-        onclick: (e) => {
-          draft.icon = name;
-          iconGrid.querySelectorAll('.icon-cell').forEach((c) => c.classList.remove('selected'));
-          e.currentTarget.classList.add('selected');
-          preview.innerHTML = svgIcon(draft.icon);
-        },
-      })
-    )
-  );
-
-  const colorRow = el(
-    'div',
-    { class: 'color-grid' },
-    PALETTE.map((c) =>
-      el('button', {
-        class: `color-cell${c === draft.color ? ' selected' : ''}`,
-        style: `background:${c}`,
-        'aria-label': c,
-        onclick: (e) => {
-          draft.color = c;
-          colorRow.querySelectorAll('.color-cell').forEach((x) => x.classList.remove('selected'));
-          e.currentTarget.classList.add('selected');
-          preview.style.color = c;
-        },
-      })
-    )
-  );
-
-  const sheetCtl = openSheet({
-    title: isNew ? '新規カテゴリー' : 'カテゴリーの編集',
-    content: el(
-      'div',
-      { class: 'cat-editor' },
-      el('div', { class: 'cat-editor-head' }, preview, nameInput),
-      el('div', { class: 'section-label' }, 'アイコン'),
-      iconGrid,
-      el('div', { class: 'section-label' }, 'カラー'),
-      colorRow,
-      el(
-        'button',
-        {
-          class: 'save-btn',
-          onclick: () => {
-            const name = draft.name.trim();
-            if (!name) {
-              toast('名前を入力してください', { icon: 'info' });
-              return;
-            }
-            if (isNew) {
-              store.addCategory(state.activeProfileId, menuState.catType, { name, icon: draft.icon, color: draft.color });
-            } else {
-              store.updateCategory(cat.id, { name, icon: draft.icon, color: draft.color });
-            }
-            sheetCtl.close();
-            emit('menu', 'input', 'report', 'budget');
-            toast('カテゴリーを保存しました');
-          },
-        },
-        el('span', {}, '保存する')
-      )
-    ),
-  });
+  openSharedCategoryEditor(cat, { profileId: state.activeProfileId, type: menuState.catType });
 }
 
 // ================= 支払い方法管理 =================

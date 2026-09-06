@@ -358,6 +358,44 @@ export function moveCategory(id, dir) {
   touch();
 }
 
+// ドラッグ並べ替えの結果(表示中カテゴリーのID配列)を一括で保存する。
+// 配列に含まれないカテゴリー(削除済みなど)は現在の相対順のまま末尾に回す。
+export function setCategoryOrder(profileId, type, orderedIds) {
+  const all = getCategories(profileId, type, { includeArchived: true });
+  const rank = new Map(orderedIds.map((id, i) => [id, i]));
+  const rest = all.filter((c) => !rank.has(c.id));
+  rest.forEach((c, i) => rank.set(c.id, orderedIds.length + i));
+  let changed = false;
+  for (const c of all) {
+    const next = rank.get(c.id);
+    if (c.sortOrder !== next) {
+      c.sortOrder = next;
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  writeKey('categories');
+  touch();
+}
+
+// ================= 設定(全事業共通) =================
+
+const SETTING_DEFAULTS = {
+  showTransfer: true, // 入力画面に「振替」ボタンを出すか
+};
+
+export function getSetting(key) {
+  const v = db.settings?.[key];
+  return v === undefined ? SETTING_DEFAULTS[key] : v;
+}
+
+export function setSetting(key, value) {
+  if (!db.settings) db.settings = {};
+  db.settings[key] = value;
+  writeKey('settings');
+  touch();
+}
+
 // ================= 支払い方法(プロフィール共通) =================
 
 export function getPaymentMethods({ includeArchived = false } = {}) {
