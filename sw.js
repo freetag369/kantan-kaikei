@@ -1,5 +1,5 @@
 // Service Worker: プリキャッシュ + Cache First(オフライン対応)
-const CACHE_NAME = 'kk-v4';
+const CACHE_NAME = 'kk-v5';
 
 const ASSETS = [
   './',
@@ -14,6 +14,8 @@ const ASSETS = [
   './js/ui.js',
   './js/charts.js',
   './js/components.js',
+  './js/sortable.js',
+  './js/views/category-editor.js',
   './js/views/input.js',
   './js/views/calendar.js',
   './js/views/report.js',

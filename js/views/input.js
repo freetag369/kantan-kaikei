@@ -5,13 +5,19 @@ import { state, on, emit, resetInputForm, setState } from '../state.js';
 import * as store from '../store.js';
 import { toast, confirmDialog } from '../ui.js';
 import { profilePill, catIcon, segmented, emptyState } from '../components.js';
+import { openCategoryEditor } from './category-editor.js';
+import { makeSortable } from '../sortable.js';
 
 let root;
+let reorderMode = false; // カテゴリーの並べ替えモード(長押しか「並べ替え」ボタンで入る)
 
 export function initInputView(container) {
   root = container;
   on('input', render);
-  on('profile', render);
+  on('profile', () => {
+    reorderMode = false;
+    render();
+  });
   render();
 }
 
@@ -42,20 +48,24 @@ function render() {
   root.innerHTML = '';
 
   // ===== ヘッダー =====
+  // 「振替」は設定で隠せる。ただし振替の取引を編集中は隠していても出す(種別が選べなくなるため)
+  const showTransfer = store.getSetting('showTransfer') || isTransfer;
+  const typeOptions = [
+    { value: 'expense', label: '支出' },
+    showTransfer ? { value: 'transfer', label: '振替' } : null,
+    { value: 'income', label: '収入' },
+  ].filter(Boolean);
   const header = el(
     'div',
     { class: 'view-header' },
     profilePill(),
     segmented(
-      [
-        { value: 'expense', label: '支出' },
-        { value: 'income', label: '収入' },
-        { value: 'transfer', label: '振替' },
-      ],
+      typeOptions,
       form.type,
       (v) => {
         form.type = v;
         form.categoryId = null;
+        reorderMode = false;
         render();
       },
       { cls: 'type-seg' }
@@ -149,15 +159,16 @@ function render() {
 
   // ===== カテゴリーグリッド(振替時は非表示) =====
   if (!isTransfer && !form.categoryId && categories.length) form.categoryId = categories[0].id;
-  const grid = categories.length
-    ? el('div', { class: 'cat-grid' })
-    : emptyState('カテゴリーがありません。メニュー →「カテゴリーの編集」から追加してください。', 'info');
+  if (categories.length < 2) reorderMode = false;
+  const grid = el('div', { class: `cat-grid${reorderMode ? ' reordering' : ''}` });
   for (const cat of categories) {
     const btn = el(
       'button',
       {
         class: `cat-cell${cat.id === form.categoryId ? ' selected' : ''}`,
+        dataset: { id: cat.id },
         onclick: () => {
+          if (reorderMode) return; // 並べ替え中はタップで選択しない
           form.categoryId = cat.id;
           grid.querySelectorAll('.cat-cell').forEach((c) => c.classList.remove('selected'));
           btn.classList.add('selected');
@@ -171,6 +182,64 @@ function render() {
     );
     grid.append(btn);
   }
+  // 末尾の「+」: ここから直接カテゴリーを追加できる(追加したものをそのまま選択状態にする)
+  grid.append(
+    el(
+      'button',
+      {
+        class: 'cat-cell cat-cell-add',
+        'aria-label': 'カテゴリーを追加',
+        onclick: () => {
+          if (reorderMode) return;
+          openCategoryEditor(null, {
+            profileId: state.activeProfileId,
+            type: form.type,
+            onSaved: (cat) => {
+              form.categoryId = cat.id;
+            },
+          });
+        },
+      },
+      el('span', { class: 'cat-icon lg cat-add-icon', html: svgIcon('plus') }),
+      el('span', { class: 'cat-cell-name' }, '追加')
+    )
+  );
+
+  // 並べ替え: 「並べ替え」ボタンかセルの長押しでモードに入り、ドラッグで順番を入れ替える
+  const reorderBtn = el(
+    'button',
+    {
+      class: 'text-btn sm',
+      style: categories.length < 2 ? 'visibility:hidden' : '',
+      onclick: () => setReorderMode(!reorderMode),
+    },
+    reorderMode ? '完了' : '並べ替え'
+  );
+  const reorderHint = el('div', { class: 'reorder-hint', hidden: !reorderMode }, 'ドラッグして順番を入れ替え、「完了」で戻ります');
+  const catHead = el('div', { class: 'section-head' }, el('div', { class: 'section-label' }, 'カテゴリー'), reorderBtn);
+
+  // 再描画するとドラッグ中のセルが消えるので、モード切替は DOM を直接書き換える
+  function setReorderMode(on) {
+    reorderMode = on;
+    grid.classList.toggle('reordering', on);
+    reorderBtn.textContent = on ? '完了' : '並べ替え';
+    reorderHint.hidden = !on;
+  }
+
+  makeSortable(grid, {
+    itemSelector: '.cat-cell:not(.cat-cell-add)',
+    immediate: () => reorderMode,
+    longPress: 450,
+    scrollEl: () => grid.closest('.view-scroll'), // 端に近づいたら自動スクロール
+    onStart: () => {
+      if (!reorderMode) setReorderMode(true);
+    },
+    onChange: (ids) => {
+      store.setCategoryOrder(state.activeProfileId, form.type, ids);
+      // 入力画面は DOM がすでに新しい順序なので再描画しない(ドラッグ中のセルを壊さないため)
+      emit('menu', 'report', 'budget');
+    },
+  });
 
   // ===== 支払い方法チップ =====
   // 振替時は「チャージ元(から)」「チャージ先(へ)」の2列に置き換える
@@ -238,7 +307,7 @@ function render() {
     editBanner,
     el('div', { class: 'card form-card' }, dateRow, el('div', { class: 'form-sep' }), memoRow, el('div', { class: 'form-sep' }), amountRow),
     ...methodSections,
-    isTransfer ? null : el('div', { class: 'form-section' }, el('div', { class: 'section-label' }, 'カテゴリー'), grid),
+    isTransfer ? null : el('div', { class: 'form-section' }, catHead, grid, reorderHint),
     el('div', { class: 'footer-spacer' })
   );
 
